@@ -3,7 +3,7 @@
 '''
 @Author: Recar
 @Date: 2019-07-16 19:19:29
-@LastEditTime: 2019-07-17 17:26:30
+@LastEditTime: 2019-07-17 21:56:58
 '''
 
 import nmap
@@ -27,7 +27,7 @@ class PortNmap(object):
         if type(self.ports) is not list:
             self.logger.error("port type is must list")
         # ip:[ {port: port_info}]
-        self.ip_port_info_dict = defaultdict(list)
+        self.ip_port_names_dict = defaultdict(list)
     
     def run(self):
         scan_satrt = time.perf_counter()
@@ -39,20 +39,15 @@ class PortNmap(object):
         self.logger.debug(nm.command_line())
         for host in nm.all_hosts():
             self.logger.debug(f"host: {host}")
-            for port in nm[host]['tcp'].keys():
-                state_port = nm[host]['tcp'][port]['state']
-                name = nm[host]['tcp'][port]["name"]
-                product = nm[host]['tcp'][port]["product"]
-                version = nm[host]['tcp'][port]["version"]
-                if state_port == "open":
-                    self.logger.debug(f"port: {port} name: {name}")
-                    portinfo = {port:{
-                                        'name': name,
-                                        'product': product,
-                                        'version': version
-                                        }}
-                    self.ip_port_info_dict[host].append(portinfo)
-            self.logger.debug("==================")
+            if 'tcp' in nm[host]:
+                for port in nm[host]['tcp'].keys():
+                    state_port = nm[host]['tcp'][port]['state']
+                    name = nm[host]['tcp'][port]["name"]
+                    if state_port == "open":
+                        self.logger.debug(f"port: {port} name: {name}")
+                        port_name = {"port": port, "name": name}
+                        self.ip_port_names_dict[host].append(port_name)
+                self.logger.debug("==================")
         scan_end = time.perf_counter() - scan_satrt
         self.logger.info(f"nmap use time:{scan_end:.2f}s")
-        return self.ip_port_info_dict
+        return self.ip_port_names_dict

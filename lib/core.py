@@ -3,7 +3,7 @@
 '''
 @Author: Recar
 @Date: 2019-07-12 15:56:41
-@LastEditTime: 2019-07-17 17:32:01
+@LastEditTime: 2019-07-17 21:57:47
 ''' 
 
 from dns import resolver
@@ -13,7 +13,9 @@ from scripts.port_nmap import PortNmap
 import re
 import os
 import subprocess
-
+import requests
+import json
+import datetime
 
 def domain_to_ip(domain):
     """将域名转为ip"""
@@ -71,7 +73,7 @@ class PortScan(object):
 
         >>> pos = PortScan(target_ip, net_c=True, all_ports=True)
 
-        >>> ip_port_info_dict = pos.scan()
+        >>> ip_port_names_dict = pos.scan() # host:[{"port":port,"name":name}]
 
     """
     def __init__(self, target_ip, net_c=False, all_ports=False, logger=logger):
@@ -91,11 +93,49 @@ class PortScan(object):
             open_ports = pmscan.run()
             # nmapscan
             pnscan = PortNmap(self.hosts, ports=open_ports, logger=self.logger)
-            port_scan_result = pnscan.run()
+            ip_port_names_dict = pnscan.run()
             self.logger.info("port scan end")
-            return port_scan_result
+            return ip_port_names_dict
         else:# 否则直接交给Nmap扫描 配置文件中的常见端口
             pnscan = PortNmap(self.hosts, logger=self.logger)
-            port_scan_result = pnscan.run()
+            ip_port_names_dict = pnscan.run()
             self.logger.info("port scan end")
-            return port_scan_result
+            return ip_port_names_dict
+
+# def get_title(ip_port_names_dict):
+#     for host in ip_port_names_dict.keys():
+#         port_names = ip_port_names_dict[host]
+#         for port_name in port_names:
+#             port = port_name["port"]
+#             name = port_name["name"]
+#             if name == "http" or "https":
+#                 response = requests.get(f"{name}:{host}:{port}")
+#                 status_code = response.status_code()
+#                 title = re.findall('<title>[\s\S]*?</title>', response.content)[0]
+                
+
+def subdomain_to_c(subdomain_log_path):
+    ips_c = set()
+    with open(subdomain_log_path, "r") as f:
+        for domain_ips in f:
+            domain = domain_ips.split("    ")[0]
+            ip_list = eval(domain_ips.split("    ")[1])
+            for ip in ip_list:
+                ip_split = ip.split(".")
+                ip_c = f"{ip_split[0]}.{ip_split[1]}.{ip_split[2]}.0/24"
+                ips_c.add(ip_c)
+    logger.info(f"find c segment count: {len(ips_c)}")
+    return ips_c
+
+def write_output(data, ip_c, domain=None):
+    ip_c = ip_c.replace("/24", "")
+    if domain is None:
+        domain = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    output_dir = os.path.join(base_path, "../", "output", domain)
+    output_path = f"{output_dir}/{ip_c}.json"
+    if not os.path.isdir(output_dir):
+        os.makedirs(output_dir)
+    with open(output_path, "w") as f:
+        json.dump(data, f, indent=3)
+    logger.info(f"save {ip_c} to {output_path}")
