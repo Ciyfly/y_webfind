@@ -3,7 +3,7 @@
 '''
 @Author: Recar
 @Date: 2019-07-16 18:30:00
-@LastEditTime: 2019-07-17 21:08:55
+@LastEditTime: 2019-07-18 11:32:37
 '''
 
 import time
@@ -24,12 +24,13 @@ class PortMasscan(object):
     
     def run(self):
         scan_satrt = time.perf_counter()
-        self.logger.info("start masscan all ports")
+        self.logger.info(f"start masscan {self.hosts} all ports")
         mas = PortScanner()
+        arguments='--rate 1000'
         if self.ports is None:
-            mascscan_result = mas.scan(self.hosts, sudo=True)
+            mascscan_result = mas.scan(self.hosts, arguments=arguments ,sudo=True)
         else:
-            mascscan_result = mas.scan(self.hosts, ports=self.ports, sudo=True)
+            mascscan_result = mas.scan(self.hosts, ports=self.ports, arguments=arguments, sudo=True)
         command_line = mascscan_result['masscan']['command_line']
         self.logger.debug(f"masscan commend: {command_line}")
         scan_result = mascscan_result['scan']

@@ -3,9 +3,10 @@
 '''
 @Author: Recar
 @Date: 2019-07-12 15:56:41
-@LastEditTime: 2019-07-17 21:57:47
+@LastEditTime: 2019-07-17 22:44:03
 ''' 
 
+from concurrent.futures import ThreadPoolExecutor,ProcessPoolExecutor
 from dns import resolver
 from lib.log import logger
 from scripts.port_masscan import PortMasscan
@@ -127,6 +128,18 @@ def subdomain_to_c(subdomain_log_path):
     logger.info(f"find c segment count: {len(ips_c)}")
     return ips_c
 
+def subdomain_port_scan(ips_c):
+    pool = ThreadPoolExecutor(50) # 定义线程池
+    all_task = list()
+    for domain in ips_c:
+        pos = PortScan(ip_c, net_c=True, all_ports=True)
+        ip_port_info_dict = pos.scan()
+        logger.info(ip_port_info_dict)
+        write_output(ip_port_info_dict, target_ip, domain=domain)
+        all_task.append(pool.submit(self.analysis_dns, domain))
+    for task in all_task:
+        task.result()    
+    
 def write_output(data, ip_c, domain=None):
     ip_c = ip_c.replace("/24", "")
     if domain is None:

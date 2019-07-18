@@ -3,7 +3,7 @@
 '''
 @Author: ysy
 @Date: 2019-07-12 15:21:58
-@LastEditTime: 2019-07-17 22:06:48
+@LastEditTime: 2019-07-18 10:38:31
 '''
 from lib.parser import get_options
 from lib.log import logger
@@ -25,7 +25,6 @@ def main():
 		target_ip = get_ip_target(target)
 		pos = PortScan(target_ip, net_c=net_c, all_ports=all_ports)
 		ip_port_info_dict = pos.scan()
-		logger.info(ip_port_info_dict)
 		write_output(ip_port_info_dict, target_ip, domain=domain)
 	else:
 		# 对子域名的结果批量测试
