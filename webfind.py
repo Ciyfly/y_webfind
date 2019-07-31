@@ -3,36 +3,35 @@
 '''
 @Author: ysy
 @Date: 2019-07-12 15:21:58
-@LastEditTime: 2019-07-18 10:38:31
+@LastEditTime: 2019-07-31 17:04:30
 '''
 from lib.parser import get_options
 from lib.log import logger
-from lib.core import get_ip_target, PortScan, subdomain_to_c, write_output
+from lib.core import  PortScan, WriteOutput, WebInfoScan
 import logging
 
 def main():
 	options = get_options()
-	target = options.target
-	domain_log_path = options.domain_log_path
 	domain = options.domain
+	domains_file_path = options.domains_file_path
+	webinfo = options.webinfo
+	port_scan = options.port_scan
 	net_c = options.net_c
 	all_ports = options.all_ports
 	debug = options.debug
+	webinfos_list = None
+	ip_port_names_list =  None
 	if debug:
 		logger.setLevel(logging.DEBUG)
-	if not domain_log_path:
-		# 判断ip还是域名 
-		target_ip = get_ip_target(target)
-		pos = PortScan(target_ip, net_c=net_c, all_ports=all_ports)
-		ip_port_info_dict = pos.scan()
-		write_output(ip_port_info_dict, target_ip, domain=domain)
-	else:
-		# 对子域名的结果批量测试
-		ips_c = subdomain_to_c(domain_log_path)
-		for ip_c in ips_c:
-			pos = PortScan(ip_c, net_c=True, all_ports=True)
-			ip_port_info_dict = pos.scan()
-			logger.info(ip_port_info_dict)
-			write_output(ip_port_info_dict, target_ip, domain=domain)
+	if webinfo or not webinfo  and not port_scan: # 默认只进行webinfo获取
+		logger.info("web scan\n")
+		webinfos_list = WebInfoScan(domain=domain, domains_file_path=domains_file_path).run()
+	if port_scan:
+		ip_port_names_list  = PortScan(domain=domain, domains_file_path=domains_file_path, net_c=net_c, all_ports=all_ports).run()
+
+	WriteOutput(domain=domain, domains_file_path=domains_file_path, webinfos_list=webinfos_list, ip_port_names_list=ip_port_names_list)
+	
 if __name__ == "__main__":
 	main()
+	
+	

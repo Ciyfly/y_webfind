@@ -3,7 +3,7 @@
 '''
 @Author: Recar
 @Date: 2019-07-16 19:19:29
-@LastEditTime: 2019-07-18 11:48:53
+@LastEditTime: 2019-07-26 18:02:17
 '''
 
 import nmap
@@ -31,7 +31,7 @@ class PortNmap(object):
     
     def run(self):
         scan_satrt = time.perf_counter()
-        self.logger.info("start nmap scan {self.hosts} ports")
+        self.logger.info(f"Start Nmap Scan {self.hosts} Ports")
         nm = nmap.PortScanner()
         if self.ports:
             # 拼接扫描的端口
@@ -53,5 +53,5 @@ class PortNmap(object):
                         self.ip_port_names_dict[host].append(port_name)
                 self.logger.info("==================")
         scan_end = time.perf_counter() - scan_satrt
-        self.logger.info(f"nmap use time:{scan_end:.2f}s")
+        self.logger.info(f"Nmap Use Time:{scan_end:.2f}s")
         return self.ip_port_names_dict
