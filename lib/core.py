@@ -3,7 +3,7 @@
 '''
 @Author: Recar
 @Date: 2019-07-12 15:56:41
-@LastEditTime: 2019-07-31 17:38:45
+@LastEditTime: 2019-08-07 22:32:18
 ''' 
 
 from concurrent.futures import ThreadPoolExecutor,ProcessPoolExecutor
@@ -14,6 +14,8 @@ from scripts.port_nmap import PortNmap
 from config.fingerprint import FINGERPRINTS
 import re
 import os
+import sys
+import importlib
 import subprocess
 import requests
 import json
@@ -23,43 +25,21 @@ class WriteOutput(object):
 
     def __init__(
         self, domain=None, domains_file_path=None,
-        webinfos_list=None, ip_port_names_list =None
+        webinfos_dict=None, ip_port_names_dict =None
         ):
         self.domain = domain
         self.domains_file_path = domains_file_path
-        self.webinfos_list = webinfos_list
-        self.ip_port_names_list  = ip_port_names_list 
+        self.webinfos_dict = webinfos_dict
+        self.ip_port_names_dict  = ip_port_names_dict 
         self.parsing_data()
-        self.save()
 
     def parsing_data(self):
-        self.result = list()
         """将两个结果信息结合到一起"""
-        if self.webinfos_list and self.ip_port_names_list:
-            for webinfo in self.webinfos_list:
-                domain = webinfo["domain"]
-                for ip_domain in self.ip_port_names_list:
-                    if domain == ip_domain:
-                        data = {
-                            "webinfo":webinfo,
-                            "ip_port_info": self.ip_port_names_list[domain]
-                        }
-                    self.result.append(data)
-        elif self.webinfos_list and self.ip_port_names_list is None:
-            for webinfo in self.webinfos_list:
-                data = {
-                        "webinfo":webinfo,
-                        "ip_port_info": ""
-                        }
-                self.result.append(data)
-        elif self.ip_port_names_list and self.webinfos_list is None:
-                data = {
-                        "webinfo":"",
-                        "ip_port_info": self.ip_port_names_list
-                        }
-                self.result.append(data)
+        self.result = {
+            "webinfo":self.webinfos_dict if self.webinfos_dict else "",
+            "ip_port_info": self.ip_port_names_dict if self.ip_port_names_dict else ""
+        }
 
-        
     def save(self):
         output = self.domain
         if self.domain is None:
@@ -103,10 +83,11 @@ class PortScan(object):
         self.all_ports = all_ports
         # 日志对象
         self.logger = logger
-        # {domain: [ {ip:[{port: port, name: name}]},{ip:[{port: port, name: name}]} ], domain: []}
-        self.domain_ip_port_names_dict = dict()
+        # {domain: [{ip:ip, port_info:[{port: port, name: name}], webinfo: {} }]}
+        self.domain_ip_info_dict = dict()
 
     def init_domains(self, domain):
+        """初始化域名列表"""
         if self.domains_file_path:
             if os.path.exists(self.domains_file_path):
                 with open(domains_file_path, "r") as f:
@@ -131,6 +112,12 @@ class PortScan(object):
 
     def domain_to_ip(self, domain):
         """将域名转为ip"""
+        # 是ip的话直接返回
+        ipv4_regex = re.compile(
+            r'(?:25[0-5]|2[0-4]\d|[0-1]?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|[0-1]?\d?\d)){3}',
+            re.IGNORECASE)
+        if ipv4_regex.match(domain):
+            return domain
         try:
             ans = resolver.query(domain, "A")
             if ans:
@@ -153,7 +140,7 @@ class PortScan(object):
             # 将域名转为ip
             host = self.domain_to_ip(domain)
             if host:
-                ip_port_names_list = list()
+                ip_port_info_list = list()
                 # 如果进行C段扫描
                 if self.net_c:
                     logger.info("C Segment Port Scan")
@@ -168,14 +155,14 @@ class PortScan(object):
                         # nmap 
                         pnscan = PortNmap(host, ports=open_ports, logger=self.logger)
 
-                        ip_port_names_list.append(pnscan.run())
+                        ip_port_info_list.append(pnscan.run())
                     self.logger.info("port scan end")
                 else:# 否则直接交给Nmap扫描 配置文件中的常见端口
                     pnscan = PortNmap(host, logger=self.logger)
-                    ip_port_names_list = pnscan.run()
+                    ip_port_info_list = [pnscan.run()]
                     self.logger.info("Port Scan end")
-                self.domain_ip_port_names_dict[domain] = ip_port_names_list
-        return self.domain_ip_port_names_dict
+                self.domain_ip_info_dict[domain] = ip_port_info_list
+        return self.domain_ip_info_dict
 
 
 class WebInfoScan():
@@ -301,3 +288,45 @@ class WebInfoScan():
             if webinfo:
                 self.get_web_framework(webinfo)
         return self.webinfos
+
+class WeakPassword(object):
+    
+    def __init__(self, webinfo_portinfo):
+        self.webinfo = webinfo_portinfo["webinfo"]
+        self.ip_port_info = webinfo_portinfo["ip_port_info"]
+        self.weak_dict = {
+            "mysql": "mysql_weak",
+            "ssh": "ssh_weak",
+            "ftp": "ftp_weak",
+            "redis": "redis_weak"
+        }
+        self.waek_result = list()
+        # 导入弱口令脚本目录
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        scripts_path = os.path.join(base_path, "../","scripts", "weak")
+        sys.path.append(scripts_path)
+
+    def run(self):
+        for domain in self.ip_port_info.keys():
+            for ip_port_info_list in self.ip_port_info[domain]:
+                for ip_port_info in ip_port_info_list:
+                    ip = ip_port_info["ip"]
+                    port_info_list = ip_port_info["port_info"]
+                    for port_info in port_info_list:
+                        port = port_info["port"]
+                        service = port_info["service"]
+                        if service in self.weak_dict:
+                            logger.info(f"Weak Scan: {ip}->{port}:{service}_weak")
+                            metaclass=importlib.import_module(f"{service}_weak")
+                            weak_result = metaclass.Weak(ip, port).run()
+                            if weak_result["weak"]:
+                                logger.info("find weak!!!")
+                                username = weak_result["username"]
+                                passwd = weak_result["passwd"]
+                                logger.info(f"{ip}:{port}:{service}:{username}:{passwd}")
+                                self.waek_result.append({
+                                    "ip": ip, "port": port,
+                                    "service": service, "username": username,
+                                    "passwd": passwd
+                                    })
+        return self.waek_result 
