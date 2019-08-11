@@ -3,7 +3,7 @@
 '''
 @Author: Recar
 @Date: 2019-07-12 15:56:41
-@LastEditTime: 2019-08-07 22:32:18
+@LastEditTime: 2019-08-11 18:52:06
 ''' 
 
 from concurrent.futures import ThreadPoolExecutor,ProcessPoolExecutor
@@ -191,10 +191,12 @@ class WebInfoScan():
     """
     def __init__(
         self, domain=None, domains_file_path=None,
-        logger=logger
+        ip_port_names_dict=None,logger=logger
         ):
+        requests.packages.urllib3.disable_warnings()
         self.domain = domain
         self.domains_file_path = domains_file_path
+        self.ip_port_names_dict = ip_port_names_dict
         self.logger = logger
         self.webinfos = list()
 
@@ -205,11 +207,13 @@ class WebInfoScan():
             target_url = f"http://{domain}"
         self.logger.info(f"Url: {target_url}")
         try:
-            response = requests.get(target_url, timeout=3)
+            response = requests.get(target_url, timeout=3, verify=False)
         except requests.exceptions.Timeout:
             return None
         except requests.exceptions.ConnectionError:
             return None
+        except Exception as e:
+            print(e)
         # 状态码
         target_status_code = response.status_code
         self.logger.info(f"Status Code: {target_status_code}")
@@ -232,9 +236,12 @@ class WebInfoScan():
                         self.logger.info(f"Title: {target_title}\n")
         except Exception:
             return None
-
+        port = 80
+        if len(domain.split(":"))>1:
+            port = domain.split(":")[1]
         weninfo = {
             "domain": domain,
+            "port": port,
             "url": target_url,
             "title": target_title,
             "status_code": target_status_code,
@@ -274,12 +281,33 @@ class WebInfoScan():
                     domains.append(domain_ips.split("    ")[0])
         return domains
 
+    def domains_port_get_weninfo(self):
+        """根据端口扫描的结果获取web服务"""
+        domains = []
+        for domain in self.ip_port_names_dict.keys():
+            ip_port_weak_info = dict()
+            for ip_port_info_list in self.ip_port_names_dict[domain]:
+                ip_port_weak_info_list = list()
+                for ip_port_info in ip_port_info_list:
+                    weak_datas = list()
+                    ip = ip_port_info["ip"]
+                    port_info_list = ip_port_info["port_info"]
+                    for port_info in port_info_list:
+                        port = port_info["port"]
+                        service = port_info["service"]
+                        if service == "http":
+                            domains.append(f"{ip}:{port}")
+                        elif service == "https":
+                            domains.append(f"https://{ip}")
+        return domains
     def run(self):
         domains = list()
         if self.domain:
             domains.append(self.domain)
         elif self.domains_file_path:
             domains = self.doamis_file_get_weninfo()
+        elif self.ip_port_names_dict:
+            domains = self.domains_port_get_weninfo()
         # 获取webinfo
         for domain in domains:
             # 请求获取web信息
@@ -290,31 +318,42 @@ class WebInfoScan():
         return self.webinfos
 
 class WeakPassword(object):
+    """ 弱口令
+    :param ip_port_names_dict 端口扫描结果 [ {domain: [ {ip:[{port: port, name: name}]},{ip:[{port: port, name: name}]} ]
+    :param only_weak 是否只返回弱口令信息 
+    :return port_and_weak_info (weak_info) 
+    """
     
-    def __init__(self, webinfo_portinfo):
-        self.webinfo = webinfo_portinfo["webinfo"]
-        self.ip_port_info = webinfo_portinfo["ip_port_info"]
+    def __init__(self, ip_port_names_dict, only_weak=False):
+        self.ip_port_names_dict = ip_port_names_dict
+        self.only_weak = only_weak
+        self.port_and_weak_info = list()
         self.weak_dict = {
             "mysql": "mysql_weak",
             "ssh": "ssh_weak",
             "ftp": "ftp_weak",
-            "redis": "redis_weak"
+            "redis": "redis_weak",
+            "postgresql": "postgresql_weak"
         }
-        self.waek_result = list()
+        self.waek_result = dict()
         # 导入弱口令脚本目录
         base_path = os.path.dirname(os.path.abspath(__file__))
         scripts_path = os.path.join(base_path, "../","scripts", "weak")
         sys.path.append(scripts_path)
 
     def run(self):
-        for domain in self.ip_port_info.keys():
-            for ip_port_info_list in self.ip_port_info[domain]:
+        for domain in self.ip_port_names_dict.keys():
+            ip_port_weak_info = dict()
+            for ip_port_info_list in self.ip_port_names_dict[domain]:
+                ip_port_weak_info_list = list()
                 for ip_port_info in ip_port_info_list:
+                    weak_datas = list()
                     ip = ip_port_info["ip"]
                     port_info_list = ip_port_info["port_info"]
                     for port_info in port_info_list:
                         port = port_info["port"]
                         service = port_info["service"]
+                        # 下面进行弱口令
                         if service in self.weak_dict:
                             logger.info(f"Weak Scan: {ip}->{port}:{service}_weak")
                             metaclass=importlib.import_module(f"{service}_weak")
@@ -324,9 +363,21 @@ class WeakPassword(object):
                                 username = weak_result["username"]
                                 passwd = weak_result["passwd"]
                                 logger.info(f"{ip}:{port}:{service}:{username}:{passwd}")
-                                self.waek_result.append({
+                                weak_data = {
                                     "ip": ip, "port": port,
                                     "service": service, "username": username,
                                     "passwd": passwd
-                                    })
-        return self.waek_result 
+                                    }
+                                weak_datas.append(weak_data)
+                    # 添加弱口令结果
+                    self.waek_result[ip] = weak_datas # {ip: [weak_data, weak_data]}
+                    # 这里拿到弱口令结果 添加到ip port_info weak
+                    ip_port_info["weak"] = weak_datas
+                # 层层封装回去
+                    ip_port_weak_info_list.append(ip_port_info)
+                ip_port_weak_info[domain] = ip_port_weak_info_list
+            self.port_and_weak_info.append(ip_port_weak_info)
+        # 对于单独返回弱口令结果
+        if self.only_weak:
+            return self.waek_result # {ip: [weak_data]}
+        return self.port_and_weak_info 

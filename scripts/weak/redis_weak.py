@@ -3,17 +3,21 @@
 '''
 @Author: Recar
 @Date: 2019-07-31 22:27:04
-@LastEditTime: 2019-08-07 22:55:35
+@LastEditTime: 2019-08-09 18:43:24
 '''
 # resis 弱口令
-
+import os
+import sys
+base_path = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(base_path, "../"))
+from weak import Base
 import redis
 
 class Weak(Base):
 
     def __init__(self, host, port):
         super().__init__(host, port)
-        self.namepasswd_dict_path = os.path.join(self.base_path, "../", "config", "weak","redis.conf")
+        self.name = "redis"
 
     def connect(self, username, passwd):
         try:

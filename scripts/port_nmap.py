@@ -3,7 +3,7 @@
 '''
 @Author: Recar
 @Date: 2019-07-16 19:19:29
-@LastEditTime: 2019-08-04 16:28:01
+@LastEditTime: 2019-08-08 16:03:20
 '''
 
 import nmap
@@ -42,8 +42,8 @@ class PortNmap(object):
             arguments = '-sS -n -p '+','.join([str(port) for port in self.ports])
         else:
             # 没有指定则使用默认的nmap1000个端口
-            # arguments = '-sS -n --top-ports 1000'
-            arguments = '-sS -n -p 3306'
+            arguments = '-sS -n --top-ports 1000'
+            # arguments = '-sS -n -p 3306'
         nm.scan(hosts=self.hosts, arguments=arguments, sudo=True)
         self.logger.debug(nm.command_line())
         for host in nm.all_hosts():

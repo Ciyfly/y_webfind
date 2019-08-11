@@ -3,7 +3,7 @@
 '''
 @Author: Recar
 @Date: 2019-07-12 15:31:40
-@LastEditTime: 2019-07-31 16:57:48
+@LastEditTime: 2019-08-09 19:19:27
 '''
 
 from optparse import OptionParser
@@ -25,6 +25,8 @@ def get_options():
     parser.add_option('--netc',action='store_true', dest="net_c", default=False, help="是否对c段进行扫描")
 
     parser.add_option('--ap',action='store_true', dest="all_ports", default=False, help="是否对全端口进行扫描 默认只进行常见端口")
+
+    parser.add_option('--weak',action='store_true', dest="weak_scan", default=False, help="是否对识别的服务进行弱口令扫描")
     
     parser.add_option('--debug',action='store_true', dest="debug", default=False, help="设置日志输出的级别输出debug日志")
 
