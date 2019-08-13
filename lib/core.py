@@ -3,7 +3,7 @@
 '''
 @Author: Recar
 @Date: 2019-07-12 15:56:41
-@LastEditTime: 2019-08-11 18:52:06
+@LastEditTime: 2019-08-12 22:10:52
 ''' 
 
 from concurrent.futures import ThreadPoolExecutor,ProcessPoolExecutor
@@ -17,6 +17,7 @@ import os
 import sys
 import importlib
 import subprocess
+import threading
 import requests
 import json
 import datetime
@@ -42,8 +43,10 @@ class WriteOutput(object):
 
     def save(self):
         output = self.domain
-        if self.domain is None:
+        if self.domain is None and self.domains_file_path is None:
             self.domain = output = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+        if self.domains_file_path:
+            self.domain = output = os.path.basename(self.domains_file_path).split(".")[0]
         base_path = os.path.dirname(os.path.abspath(__file__))
         output_dir = os.path.join(base_path, "../", "output", output)
         output_path = f"{output_dir}/{self.domain}.json"
@@ -191,13 +194,15 @@ class WebInfoScan():
     """
     def __init__(
         self, domain=None, domains_file_path=None,
-        ip_port_names_dict=None,logger=logger
+        ip_port_names_dict=None,logger=logger, thread_count=100
         ):
         requests.packages.urllib3.disable_warnings()
         self.domain = domain
         self.domains_file_path = domains_file_path
         self.ip_port_names_dict = ip_port_names_dict
+        self.thread_count = thread_count
         self.logger = logger
+        self.lock = threading.Lock()
         self.webinfos = list()
 
     def get_title(self, domain):
@@ -205,7 +210,6 @@ class WebInfoScan():
         target_url = domain
         if not domain.startswith("http"):
             target_url = f"http://{domain}"
-        self.logger.info(f"Url: {target_url}")
         try:
             response = requests.get(target_url, timeout=3, verify=False)
         except requests.exceptions.Timeout:
@@ -213,52 +217,73 @@ class WebInfoScan():
         except requests.exceptions.ConnectionError:
             return None
         except Exception as e:
-            print(e)
-        # 状态码
-        target_status_code = response.status_code
-        self.logger.info(f"Status Code: {target_status_code}")
-        # 服务器
-        target_server = response.headers.get('Server')
-        # 语言
-        target_x_powered_by =  response.headers.get('X-Powered-By')
-        if target_server:
-            self.logger.info(f"Server: {target_server}")
-        if target_x_powered_by:
-            self.logger.info(f"X-Powered-By: {target_x_powered_by}")
-        try:
-            response_content = response.content.decode()
-            # 标题
-            target_title = re.findall('<title>([\s\S]*?)</title>', response_content)
-            if target_title:
-                for title in target_title:
-                    if title:
-                        target_title = title.strip()
-                        self.logger.info(f"Title: {target_title}\n")
-        except Exception:
             return None
         port = 80
         if len(domain.split(":"))>1:
             port = domain.split(":")[1]
-        weninfo = {
+        webinfo = {
             "domain": domain,
             "port": port,
             "url": target_url,
-            "title": target_title,
-            "status_code": target_status_code,
-            "server": target_server,
-            "language": target_x_powered_by,
+            "title": "",
+            "status_code": "",
+            "server": "",
+            "language": "",
             "framework":"",
-            "headers": response.headers,
-            # "headers": "",
-            "body": response.content.decode("utf-8")
-            # "body": ""
+            # 要把headers转为dict因为 requests的headers类型是 CaseInsensitiveDict 不能直接json化
+            "headers": dict(response.headers),
+            "body": ""
         }
-        return weninfo
+        # 状态码
+        target_status_code = response.status_code
+        webinfo["status_code"] = target_status_code
+        # 服务器
+        target_server = response.headers.get('Server')
+        if target_server:
+            webinfo["server"] = target_server
+        # 语言
+        target_x_powered_by =  response.headers.get('X-Powered-By')
+        if target_x_powered_by:
+            webinfo["language"] = target_x_powered_by
+        # 有一些body utd-8解码会有问题
+        try:
+            body = response.content.decode("utf-8")
+        except Exception:
+            body = str(response.content)
+        webinfo["body"] = body
+        try:
+            # 标题
+            target_title = re.findall('<title>([\s\S]*?)</title>', body)
+            if target_title:
+                for title in target_title:
+                    if title:
+                        # 这里找到标题才输出和保存
+                        target_title = title.strip()
+                        # self.logger.info(f"Title: {target_title}\n")
+                        webinfo["title"] = target_title
+        except Exception:
+            pass
+        # 识别下web框架指纹
+        webinfo = self.get_web_framework(webinfo)
+        self.webinfos.append(webinfo)
+        # 这里加锁输出 防止输出乱序
+        self.lock.acquire()
+        self.logger.info(f"Url: {webinfo['url']}")
+        self.logger.info(f"Status Code: {webinfo['status_code']}")
+        if webinfo['server']:
+            self.logger.info(f"Server: {webinfo['server']}")
+        if webinfo['language']:
+            self.logger.info(f"X-Powered-By: {webinfo['language']}")
+        if webinfo['framework']:
+            self.logger.info(f"Framework: {webinfo['framework']}")            
+        if webinfo['title']:
+            self.logger.info(f"Title: {webinfo['title']}")
+        print() # 这里不好确定哪个是最后一个 所以直接换行来隔开
+        self.lock.release()
 
     def get_web_framework(self, webinfo):
         """获取网站web框架"""
         # 先根据请求头里的信息来进行遍历获取
-        self.logger.debug("simple discern web framework")
         targt_headers = webinfo["headers"]
         for key, value in targt_headers.items():
             # web 框架 指纹识别
@@ -268,9 +293,7 @@ class WebInfoScan():
                     self.logger.info("Web Framework: "+FINGERPRINTS[fingerprint])
                     webinfo["framework"] = FINGERPRINTS[fingerprint]
                     break
-            # 要把headers转为dict因为 requests的headers类型是 CaseInsensitiveDict 不能直接json化
-            webinfo["headers"] = dict(webinfo["headers"])
-        self.webinfos.append(webinfo)
+        return webinfo
 
     def doamis_file_get_weninfo(self):
         """读取子域名的记录来解析"""
@@ -308,13 +331,14 @@ class WebInfoScan():
             domains = self.doamis_file_get_weninfo()
         elif self.ip_port_names_dict:
             domains = self.domains_port_get_weninfo()
-        # 获取webinfo
+        # 这里利用线程池的解决请求阻塞问题
+        pool = ThreadPoolExecutor(self.thread_count) # 定义线程池
+        all_task = list()
         for domain in domains:
-            # 请求获取web信息
-            webinfo = self.get_title(domain)
-            # 简单的通过请求头来判断下web框架
-            if webinfo:
-                self.get_web_framework(webinfo)
+            all_task.append(pool.submit(self.get_title, domain))
+        for task in all_task:
+            task.result()
+        self.logger.info(f"Find: {len(self.webinfos)}")
         return self.webinfos
 
 class WeakPassword(object):
