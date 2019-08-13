@@ -210,6 +210,7 @@ class WebInfoScan():
         target_url = domain
         if not domain.startswith("http"):
             target_url = f"http://{domain}"
+        logger.debug(f"Url: {target_url}")
         try:
             response = requests.get(target_url, timeout=3, verify=False)
         except requests.exceptions.Timeout:
@@ -331,6 +332,7 @@ class WebInfoScan():
             domains = self.doamis_file_get_weninfo()
         elif self.ip_port_names_dict:
             domains = self.domains_port_get_weninfo()
+        logger.debug(f"Scan count: {len(domains)}")
         # 这里利用线程池的解决请求阻塞问题
         pool = ThreadPoolExecutor(self.thread_count) # 定义线程池
         all_task = list()
