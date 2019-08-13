@@ -340,7 +340,7 @@ class WebInfoScan():
             all_task.append(pool.submit(self.get_title, domain))
         for task in all_task:
             task.result()
-        self.logger.info(f"Find: {len(self.webinfos)}")
+        self.logger.info(f"Web Find: {len(self.webinfos)}")
         return self.webinfos
 
 class WeakPassword(object):
@@ -385,7 +385,7 @@ class WeakPassword(object):
                             metaclass=importlib.import_module(f"{service}_weak")
                             weak_result = metaclass.Weak(ip, port).run()
                             if weak_result["weak"]:
-                                logger.info("find weak!!!")
+                                logger.info("Find Weak!!!")
                                 username = weak_result["username"]
                                 passwd = weak_result["passwd"]
                                 logger.info(f"{ip}:{port}:{service}:{username}:{passwd}")
